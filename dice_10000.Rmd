@@ -24,12 +24,14 @@ library(tidyverse)
 Create a function to roll dice. (Only variable being the number of dice rolled)
 ```{r}
 roll <- function(num_of_dice) {
-  sample(c(1:6), num_of_dice, replace = TRUE)
+  ## RES: just code comment, 1:6 instead of c(1:6)
+  sample(1:6, num_of_dice, replace = TRUE)
 }
 ```
 
 Create a function for scoring the rolled dice, and re-rolling if threshold not breached.
 ```{r}
+## RES: code as it stands function doesn't run, is this function supposed to be "score2"?
 score <- function(hand, threshold_value, start_points) {
   
   ## Starting values:
@@ -40,7 +42,8 @@ score <- function(hand, threshold_value, start_points) {
   if (length(values$hand[values$Freq == 1]) == 6) { points <- 1500 }
   
   ## Combinations, ones, and fives:
-  values$combos <- ifelse(values$Freq >= 3, (values$hand * 100) * (values$Freq - 2), 0)
+  ## RES: since speed is an issue, for integers, isn't >= 3 the same as > 2
+  values$combos <- ifelse(values$Freq > 2, (values$hand * 100) * (values$Freq - 2), 0)
   values$combos <- ifelse(values$combos == 100, values$combos * 10, values$combos)
   values$ones <- ifelse((values$combos == 0) & (values$hand == 1), 100 * values$Freq, 0)
   values$fives <- ifelse((values$combos == 0) & (values$hand == 5), 50 * values$Freq, 0)
@@ -51,6 +54,7 @@ score <- function(hand, threshold_value, start_points) {
   unused_dice <- sum(values$unused_dice)
   total_points <- start_points + points
   
+  ## RES: is this even possible?
   if (points == 0) {
     return(points)
   }
@@ -58,13 +62,14 @@ score <- function(hand, threshold_value, start_points) {
   ## Determine whether or not to continue rolling:
   ## 1. Stop rolling if threshold is reached
   ## 2. Stop rolling if no points scored & no 
+  
+  ## RES: could remove a condition -- might be misunderstanding, but seems like the only time to roll more is if <threshold_value
   if ((total_points < threshold_value) | (unused_dice == 0)) {
-    
     if (unused_dice == 0) {
-      score2(hand = roll(6), threshold_value = threshold_value, start_points = total_points)
+      score2(hand = sample(1:6, 6, replace = TRUE), threshold_value = threshold_value, start_points = total_points)
     }
     else {
-      score2(hand = roll(unused_dice), threshold_value = threshold_value, start_points = total_points)
+      score2(hand = sample(1:6, unused_dice, replace = TRUE), threshold_value = threshold_value, start_points = total_points)
     }
   }
   else {
@@ -83,7 +88,9 @@ turns_to_win <- function(thresh_val) {
   
   while(total_score < 10000) {
     i <- i + 1
-    turn_scores[i] <- score2(hand = roll(6), threshold_value = thresh_val, start_points = 0)
+    ## RES: roll is kinda a useless function, due to memory shuffling, you would be better off moving it here
+    current_roll <- sample(1:6, 6, replace = TRUE)
+    turn_scores[i] <- score2(hand = current_roll, threshold_value = thresh_val, start_points = 0)
     total_score <- sum(turn_scores)
   }
   
@@ -99,18 +106,32 @@ n_reps <- 10 # When this value is greater than 10, computing time takes super lo
 
 df_10000 <- data.frame("thresh" = 50, "ave_turns_to_win" = 20)
 
+## RES: this is going to be slow because of the recursive nature of "score"
+## try to parallelize around the inner loop where you are currently using replicate
+create cluster
+library(parallel)
+cl <- makeCluster(detectCores()-1) ## on some computers this doesn't work as intended, just set it to number of cores-1 available
+clusterExport(cl,c("score"))
 for (i in 1:100) {
   
   temp_thresh <- 10 * i
-  turns_ave <- mean(replicate(n_reps, turns_to_win(thresh_val = temp_thresh)))
+  ## RES: Set a different seed on each member of the cluster (just in case)
+  clusterSetRNGStream(cl)
+  ## RES: need to play with this a bit to make sure it works, might need to export temp_thresh
+  parSapply(cl, 1:10000, function(i,...) { turns_to_win(thresh_val = temp_thresh) } )
+  turns_ave <- mean(replicate(n_reps, turns_to_win(thresh_val = temp_thresh)))  
   
   new_row <- c(temp_thresh, turns_ave)
   
+ 
   df_10000 <- rbind(df_10000, new_row)
   # print(i) # This is useful when n_reps is big as it will show us which iteration of our for loop we are on.
 }
 
 df_10000 <- df_10000[-1,] # Drop the initial value to 
+
+## RES: stop the cluster
+stopCluster(cl)
 ```
 
 Plot, bottom of curve signifies faster at reaching 10,000 points (winning):
